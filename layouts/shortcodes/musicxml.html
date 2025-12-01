@@ -1,0 +1,325 @@
+{{- if not ($.Page.Scratch.Get "musicxml-osmd-loaded") -}}
+<script src="/js/osmd/opensheetmusicdisplay.min.js"></script>
+{{- $.Page.Scratch.Set "musicxml-osmd-loaded" true -}}
+{{- end -}}
+
+{{- $id := printf "osmd-%d" (add 1 .Ordinal) -}}
+{{- $params := .Params -}}
+{{- $page := .Page -}}
+{{- $isMusicXMLFile := false -}}
+{{- $scoreTitle := "View full score" -}}
+{{- $hiddenMetadataKeys := slice "file" "title" "fold" "preview" "previewMeasures" "flat" -}}
+{{- $falsey := slice "false" "0" "no" "off" -}}
+{{- $showPreview := true -}}
+{{- $isFoldable := true -}}
+{{- $previewMeasures := 4 -}}
+{{- $showFlat := true -}}
+
+{{- if $page }}
+  {{- with $page.Param "musicPreview" -}}
+    {{- $previewVal := lower (printf "%v" .) -}}
+    {{- if in $falsey $previewVal -}}
+      {{- $showPreview = false -}}
+    {{- else -}}
+      {{- $showPreview = true -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- with $page.Param "musicPreviewMeasures" -}}
+    {{- $previewMeasures = int . -}}
+  {{- end -}}
+
+  {{- with $page.Param "musicFold" -}}
+    {{- $foldVal := lower (printf "%v" .) -}}
+    {{- if in $falsey $foldVal -}}
+      {{- $isFoldable = false -}}
+    {{- else -}}
+      {{- $isFoldable = true -}}
+    {{- end -}}
+  {{- end -}}
+
+  {{- with $page.Param "musicFlat" -}}
+    {{- $flatVal := lower (printf "%v" .) -}}
+    {{- if in $falsey $flatVal -}}
+      {{- $showFlat = false -}}
+    {{- else -}}
+      {{- $showFlat = true -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- with .Get "preview" -}}
+  {{- $previewVal := lower (printf "%v" .) -}}
+  {{- if in $falsey $previewVal -}}
+    {{- $showPreview = false -}}
+  {{- else -}}
+    {{- $showPreview = true -}}
+  {{- end -}}
+{{- end -}}
+
+{{- with .Get "fold" -}}
+  {{- $foldVal := lower (printf "%v" .) -}}
+  {{- if in $falsey $foldVal -}}
+    {{- $isFoldable = false -}}
+  {{- else -}}
+    {{- $isFoldable = true -}}
+  {{- end -}}
+{{- end -}}
+
+{{- with .Get "previewMeasures" -}}
+  {{- $previewMeasures = int . -}}
+{{- end -}}
+
+{{- with .Get "flat" -}}
+  {{- $flatVal := lower (printf "%v" .) -}}
+  {{- if in $falsey $flatVal -}}
+    {{- $showFlat = false -}}
+  {{- else -}}
+    {{- $showFlat = true -}}
+  {{- end -}}
+{{- end -}}
+
+{{- if lt $previewMeasures 1 -}}
+  {{- $previewMeasures = 1 -}}
+{{- end -}}
+
+{{- $summaryLabel := "Expand preview" -}}
+{{- if not $showPreview -}}
+  {{- $summaryLabel = "Expand score" -}}
+{{- end -}}
+
+{{- with .Get "file" -}}
+  {{- $isMusicXMLFile = true -}}
+{{- end -}}
+
+{{- with .Get "title" -}}
+  {{- $scoreTitle = . -}}
+{{- end -}}
+
+<div class="musicxml-metadata">
+  <h3 class="musicxml-metadata-title">{{ $scoreTitle }}</h3>
+  {{- range $key, $value := $params }}
+    {{- if and (not (in $hiddenMetadataKeys $key)) (ne $value nil) }}
+    <div class="musicxml-attribute">
+      <span class="musicxml-attribute-key">{{ $key }}:</span>
+      <span class="musicxml-attribute-value">{{ $value }}</span>
+    </div>
+    {{- end }}
+  {{- end }}
+  {{- if and $showFlat $isMusicXMLFile }}
+  <div class="musicxml-summary-break"></div>
+  <a href="https://flat.io/score/import-url?url={{ .Get "file" }}&title={{ $scoreTitle }}" target="_blank" rel="noopener noreferrer" class="musicxml-flat-link">
+    <img src="https://flat.io/img/assets/add-to-flat-white.svg" alt="Add to Flat">
+  </a>
+  {{- end }}
+</div>
+{{- if $isFoldable }}
+<details class="musicxml-container" id="{{ $id }}-container">
+  <summary class="musicxml-summary">
+    <span class="musicxml-summary-label">{{ $summaryLabel }}</span>
+    {{- if $showPreview }}
+    <div class="musicxml-summary-break"></div>
+    <div id="{{ $id }}-preview" class="osmd-viewer musicxml-preview"></div>
+    {{- end }}
+  </summary>
+  <div id="{{ $id }}" class="osmd-viewer musicxml-full"></div>
+</details>
+{{- else }}
+  {{- if $showPreview }}
+  <div class="musicxml-preview-standalone">
+    <span class="musicxml-preview-label">Preview</span>
+    <div id="{{ $id }}-preview" class="osmd-viewer musicxml-preview"></div>
+  </div>
+  {{- end }}
+  <div id="{{ $id }}" class="osmd-viewer musicxml-full"></div>
+{{- end }}
+
+<script>
+  (function() {
+    function initOSMD() {
+      if (typeof opensheetmusicdisplay === 'undefined' || !opensheetmusicdisplay.OpenSheetMusicDisplay) {
+        setTimeout(initOSMD, 100);
+        return;
+      }
+
+      const previewContainer = document.getElementById('{{ $id }}-preview');
+      const fullContainer = document.getElementById('{{ $id }}');
+      const detailsEl = document.getElementById('{{ $id }}-container');
+      const hasPreview = !!previewContainer;
+      const previewMeasures = {{ $previewMeasures }};
+
+      let previewOSMD = null;
+      let previewPromise = null;
+      if (hasPreview) {
+        previewOSMD = new opensheetmusicdisplay.OpenSheetMusicDisplay(previewContainer, {
+          autoResize: true,
+          backend: "svg",
+          drawTitle: false,
+        });
+        previewOSMD.setOptions({
+          drawUpToMeasureNumber: previewMeasures,
+          drawPartNames: false,
+          drawComposer: false,
+          drawLyricist: false,
+        });
+      }
+
+      const osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay(fullContainer, {
+        autoResize: true,
+        backend: "svg",
+        drawTitle: true,
+      });
+      let fullPromise = null;
+
+      {{- if $isMusicXMLFile }}
+      const musicXMLPath = '{{ .Get "file" }}';
+      if (previewOSMD) {
+        previewPromise = previewOSMD.load(musicXMLPath);
+      }
+      fullPromise = osmd.load(musicXMLPath);
+      {{- else }}
+      const musicXML = `{{ .Inner | safeJS }}`;
+      if (previewOSMD) {
+        previewPromise = previewOSMD.load(musicXML);
+      }
+      fullPromise = osmd.load(musicXML);
+      {{- end }}
+
+      if (previewPromise) {
+        previewPromise.then(function() {
+          previewOSMD.render();
+        }).catch(function(error) {
+          console.error('Error rendering preview MusicXML:', error);
+          previewContainer.innerHTML = '<p style="color: red;">Error rendering preview</p>';
+        });
+      }
+
+      if (fullPromise) {
+        fullPromise.then(function() {
+          osmd.render();
+        }).catch(function(error) {
+          console.error('Error rendering MusicXML:', error);
+          fullContainer.innerHTML = '<p style="color: red;">Error rendering score</p>';
+        });
+      }
+
+      if (detailsEl && previewContainer) {
+        detailsEl.addEventListener('toggle', function() {
+          if (detailsEl.open) {
+            previewContainer.classList.add('musicxml-hidden');
+          } else {
+            previewContainer.classList.remove('musicxml-hidden');
+          }
+        });
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initOSMD);
+    } else {
+      initOSMD();
+    }
+  })();
+</script>
+
+<style>
+  .musicxml-container {
+    margin-top: 1rem;
+    background-color: #fffef9;
+    border-radius: 6px;
+    border: 1px solid #e0ddd2;
+    overflow: hidden;
+  }
+
+  .musicxml-container[open] {
+    padding-bottom: 0.75rem;
+  }
+
+  .musicxml-summary {
+    cursor: pointer;
+    outline: none;
+    list-style: none;
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    padding: 0.5rem;
+  }
+
+  .musicxml-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .musicxml-summary::before {
+    content: "▶";
+    display: inline-block;
+    margin-top: 0.4rem;
+    transition: transform 0.2s ease;
+  }
+
+  .musicxml-container[open] .musicxml-summary::before {
+    transform: rotate(90deg);
+  }
+
+  .musicxml-summary-label {
+    font-weight: 600;
+    margin-top: 0.2rem;
+    min-width: 120px;
+  }
+
+  .musicxml-summary-break {
+    flex-basis: 100%;
+    height: 0;
+  }
+
+  .musicxml-metadata {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .musicxml-attribute {
+    font-size: 0.9rem;
+    flex-basis: 100%;
+  }
+
+  .musicxml-attribute-key {
+    font-weight: 600;
+    text-transform: capitalize;
+    margin-right: 0.25rem;
+  }
+
+  .osmd-viewer {
+    min-height: 200px;
+  }
+
+  .musicxml-preview {
+    min-height: 120px;
+    flex: 1;
+  }
+
+  .musicxml-preview-standalone {
+    margin-top: 1rem;
+    padding: 0.5rem 0.75rem 0.75rem;
+    background-color: #fff;
+    border: 1px solid #e0ddd2;
+    border-radius: 6px;
+  }
+
+  .musicxml-preview-label {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+
+  .musicxml-hidden {
+    display: none;
+  }
+
+  .musicxml-full {
+    margin-top: 0.75rem;
+    background-color: #fff;
+    border: 1px solid #e0ddd2;
+  }
+</style>
